@@ -8,7 +8,7 @@ export default function Home() {
   const [duration, setDuration] = useState('30s');
   const [style, setStyle] = useState('Karaoké');
   const [loading, setLoading] = useState(false);
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState(null);
 
   // URL de ton backend Railway
   const BACKEND_URL = 'https://afroclip-backend-production.up.railway.app';
@@ -74,7 +74,7 @@ export default function Home() {
           Transforme tes vidéos YouTube en <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">Shorts viraux</span>
         </h1>
         <p className="text-slate-400 text-base sm:text-lg mb-8 max-w-2xl mx-auto">
-          Colle un lien, l’IA découpe, sous-titre et recadre automatiquement. Prêt pour TikTok, Reels et Shorts en quelques secondes.
+          Colle un lien, l'IA découpe, sous-titre et recadre automatiquement. Prêt pour TikTok, Reels et Shorts en quelques secondes.
         </p>
 
         {/* Input Box */}
