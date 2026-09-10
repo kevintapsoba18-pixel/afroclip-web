@@ -8,23 +8,10 @@ import {
   Subtitles, 
   Video, 
   Zap, 
-  CheckCircle2, 
-  ArrowRight, 
   Copy, 
   Crown,
-  Layers,
-  Wand2,
-  Share2
+  Wand2
 } from "lucide-react"
-
-interface Plan {
-  id: string
-  name: string
-  price: number
-  credits: number
-  features: string[]
-  popular?: boolean
-}
 
 export default function AfroClipHome() {
   const [youtubeUrl, setYoutubeUrl] = useState("")
