@@ -13,6 +13,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css"
+        />
+      </head>
       <body>{children}</body>
     </html>
   );
