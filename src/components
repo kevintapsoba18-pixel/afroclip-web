@@ -11,6 +11,7 @@ type JobStatus = 'idle' | 'pending' | 'downloading' | 'analyzing' | 'processing'
 interface Clip {
   title: string;
   durationSec: number;
+  subtitleStyle: string;
   url: string;
 }
 
@@ -26,15 +27,29 @@ const STATUS_LABELS: Record<JobStatus, string> = {
   pending: 'Préparation…',
   downloading: 'Récupération de la vidéo…',
   analyzing: 'Analyse de la vidéo…',
-  processing: 'Découpage en shorts…',
+  processing: 'Découpage et sous-titrage…',
   uploading: 'Finalisation…',
   done: 'Terminé !',
   error: 'Une erreur est survenue'
 };
 
+const DURATIONS = [
+  { value: 15, label: '15 s', hint: 'Punchy' },
+  { value: 30, label: '30 s', hint: 'Équilibré' },
+  { value: 60, label: '60 s', hint: 'Story' }
+];
+
+const SUBTITLE_STYLES = [
+  { value: 'karaoke', label: 'Karaoké', hint: 'Jaune vibrant', color: '#FFD400' },
+  { value: 'neon', label: 'Néon', hint: 'Glow violet', color: '#B15DFF' },
+  { value: 'gras-blanc', label: 'Gras Blanc', hint: 'Classique', color: '#FFFFFF' },
+  { value: 'pop-orange', label: 'Pop Orange', hint: 'Style Afro', color: '#FF7A00' }
+];
+
 export default function VideoAnalyzer() {
   const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [jobId, setJobId] = useState<string | null>(null);
+  const [clipDuration, setClipDuration] = useState(30);
+  const [subtitleStyle, setSubtitleStyle] = useState('karaoke');
   const [job, setJob] = useState<JobState>({ status: 'idle', progress: 0, error: null, clips: [] });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -48,7 +63,7 @@ export default function VideoAnalyzer() {
   };
 
   useEffect(() => {
-    return () => stopPolling(); // nettoyage si le composant se démonte
+    return () => stopPolling();
   }, []);
 
   const handleAnalyze = async () => {
@@ -60,7 +75,11 @@ export default function VideoAnalyzer() {
       const res = await fetch(`${API_URL}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ youtubeUrl: youtubeUrl.trim() })
+        body: JSON.stringify({
+          youtubeUrl: youtubeUrl.trim(),
+          clipDuration,
+          subtitleStyle
+        })
       });
 
       if (!res.ok) {
@@ -69,7 +88,6 @@ export default function VideoAnalyzer() {
       }
 
       const data = await res.json();
-      setJobId(data.jobId);
       startPolling(data.jobId);
     } catch (err: any) {
       setJob({ status: 'error', progress: 0, error: err.message, clips: [] });
@@ -98,45 +116,90 @@ export default function VideoAnalyzer() {
   const handleReset = () => {
     stopPolling();
     setYoutubeUrl('');
-    setJobId(null);
     setJob({ status: 'idle', progress: 0, error: null, clips: [] });
   };
 
   return (
-    <div className="w-full max-w-xl mx-auto bg-white rounded-2xl shadow-md p-6 space-y-5">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Lien de la vidéo YouTube
-        </label>
+    <div className="w-full max-w-xl mx-auto bg-[#14121f] rounded-3xl p-6 space-y-6 text-white">
+      {/* Lien YouTube */}
+      <div className="rounded-2xl bg-[#1c1930] px-4 py-3 flex items-center gap-3">
+        <span className="text-violet-400">▶</span>
         <input
           type="url"
           value={youtubeUrl}
           onChange={(e) => setYoutubeUrl(e.target.value)}
-          placeholder="https://youtube.com/..."
+          placeholder="Colle le lien YouTube ici..."
           disabled={isRunning}
-          className="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 disabled:opacity-60"
+          className="flex-1 bg-transparent text-sm placeholder-gray-500 focus:outline-none disabled:opacity-60"
         />
       </div>
 
+      {/* Durée du clip */}
+      <div>
+        <p className="text-xs tracking-wide text-gray-400 mb-2">DURÉE DU CLIP</p>
+        <div className="grid grid-cols-3 gap-3">
+          {DURATIONS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              disabled={isRunning}
+              onClick={() => setClipDuration(d.value)}
+              className={`rounded-xl py-3 text-center border transition disabled:opacity-60 ${
+                clipDuration === d.value
+                  ? 'border-violet-500 bg-violet-500/10'
+                  : 'border-white/10 bg-[#1c1930]'
+              }`}
+            >
+              <div className="font-semibold">{d.label}</div>
+              <div className="text-xs text-gray-400">{d.hint}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Style de sous-titres */}
+      <div>
+        <p className="text-xs tracking-wide text-gray-400 mb-2">STYLE DE SOUS-TITRES</p>
+        <div className="grid grid-cols-2 gap-3">
+          {SUBTITLE_STYLES.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              disabled={isRunning}
+              onClick={() => setSubtitleStyle(s.value)}
+              className={`rounded-xl py-3 px-4 text-left border transition disabled:opacity-60 ${
+                subtitleStyle === s.value
+                  ? 'border-violet-500 bg-violet-500/10'
+                  : 'border-white/10 bg-[#1c1930]'
+              }`}
+            >
+              <div className="font-semibold" style={{ color: s.color }}>{s.label}</div>
+              <div className="text-xs text-gray-400">{s.hint}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Bouton générer / progression */}
       {job.status === 'idle' && (
         <button
           onClick={handleAnalyze}
           disabled={!youtubeUrl.trim()}
-          className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-orange-400 text-white font-semibold py-3 disabled:opacity-50"
+          className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-pink-500 text-white font-semibold py-4 disabled:opacity-50"
         >
-          Analyser la vidéo
+          ✨ Générer les Shorts IA
         </button>
       )}
 
       {isRunning && (
         <div className="space-y-2">
-          <div className="flex justify-between text-sm text-gray-600">
+          <div className="flex justify-between text-sm text-gray-300">
             <span>{STATUS_LABELS[job.status]}</span>
             <span>{job.progress}%</span>
           </div>
-          <div className="w-full h-2 rounded-full bg-gray-100 overflow-hidden">
+          <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-violet-500 to-orange-400 transition-all duration-500"
+              className="h-full bg-gradient-to-r from-violet-500 to-pink-500 transition-all duration-500"
               style={{ width: `${job.progress}%` }}
             />
           </div>
@@ -144,7 +207,7 @@ export default function VideoAnalyzer() {
       )}
 
       {job.status === 'error' && (
-        <div className="text-sm text-red-600 bg-red-50 rounded-xl p-3">
+        <div className="text-sm text-red-400 bg-red-500/10 rounded-xl p-3">
           {job.error || 'Erreur inconnue'}
           <button onClick={handleReset} className="ml-2 underline">
             Réessayer
@@ -154,16 +217,16 @@ export default function VideoAnalyzer() {
 
       {job.status === 'done' && (
         <div className="space-y-4">
-          <p className="text-sm font-medium text-gray-700">
+          <p className="text-sm font-medium text-gray-200">
             {job.clips.length} short{job.clips.length > 1 ? 's' : ''} prêt{job.clips.length > 1 ? 's' : ''} !
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {job.clips.map((clip, i) => (
-              <div key={i} className="rounded-xl overflow-hidden border border-gray-100 bg-gray-50">
+              <div key={i} className="rounded-xl overflow-hidden border border-white/10 bg-[#1c1930]">
                 <video src={clip.url} controls className="w-full aspect-[9/16] object-cover bg-black" />
-                <div className="p-2 flex items-center justify-between text-xs text-gray-600">
+                <div className="p-2 flex items-center justify-between text-xs text-gray-300">
                   <span>{clip.title}</span>
-                  <a href={clip.url} download className="text-violet-600 font-medium">
+                  <a href={clip.url} download className="text-violet-400 font-medium">
                     Télécharger
                   </a>
                 </div>
@@ -172,7 +235,7 @@ export default function VideoAnalyzer() {
           </div>
           <button
             onClick={handleReset}
-            className="w-full rounded-xl border border-gray-200 text-gray-700 font-medium py-3"
+            className="w-full rounded-2xl border border-white/15 text-gray-200 font-medium py-3"
           >
             Analyser une autre vidéo
           </button>
