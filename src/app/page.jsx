@@ -1,31 +1,129 @@
 "use client"
 
-import { useState } from "react"
-import { 
-  Play, 
-  Sparkles, 
-  Scissors, 
-  Subtitles, 
-  Video, 
-  Zap, 
-  Copy, 
+import { useEffect, useRef, useState } from "react"
+import {
+  Play,
+  Sparkles,
+  Scissors,
+  Subtitles,
+  Video,
+  Zap,
+  Copy,
   Crown,
-  Wand2
+  Wand2,
+  Download
 } from "lucide-react"
+
+// Remplace par l'URL publique de ton backend Railway si différente,
+// ou définis NEXT_PUBLIC_API_URL dans les variables d'environnement Vercel.
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://afroclip-backend-production.up.railway.app"
+
+// Le backend attend des valeurs numériques / clés sans accents
+const DURATION_TO_SECONDS: Record<string, number> = { "15s": 15, "30s": 30, "60s": 60 }
+const STYLE_TO_KEY: Record<string, string> = {
+  "Karaoké": "karaoke",
+  "Néon": "neon",
+  "Gras Blanc": "gras-blanc",
+  "Pop Orange": "pop-orange"
+}
+
+type JobStatus = "idle" | "pending" | "downloading" | "analyzing" | "processing" | "uploading" | "done" | "error"
+
+interface Clip {
+  title: string
+  durationSec: number
+  subtitleStyle: string
+  url: string
+}
+
+interface JobState {
+  status: JobStatus
+  progress: number
+  error: string | null
+  clips: Clip[]
+}
+
+const STATUS_LABELS: Record<JobStatus, string> = {
+  idle: "",
+  pending: "Préparation...",
+  downloading: "Récupération de la vidéo...",
+  analyzing: "Analyse de la vidéo...",
+  processing: "Découpage et sous-titrage...",
+  uploading: "Finalisation...",
+  done: "Terminé !",
+  error: "Erreur"
+}
 
 export default function AfroClipHome() {
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [clipDuration, setClipDuration] = useState("30s")
   const [subtitleStyle, setSubtitleStyle] = useState("Karaoké")
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [job, setJob] = useState<JobState>({ status: "idle", progress: 0, error: null, clips: [] })
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const handleGenerate = () => {
+  const isProcessing = ["pending", "downloading", "analyzing", "processing", "uploading"].includes(job.status)
+
+  const stopPolling = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
+
+  useEffect(() => {
+    return () => stopPolling()
+  }, [])
+
+  const startPolling = (jobId: string) => {
+    stopPolling()
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/analyze/${jobId}`)
+        if (!res.ok) throw new Error("Job introuvable")
+        const data: JobState = await res.json()
+        setJob(data)
+        if (data.status === "done" || data.status === "error") {
+          stopPolling()
+        }
+      } catch (err: any) {
+        setJob((prev) => ({ ...prev, status: "error", error: err.message }))
+        stopPolling()
+      }
+    }, 2500)
+  }
+
+  const handleGenerate = async () => {
     if (!youtubeUrl) return
-    setIsProcessing(true)
-    setTimeout(() => {
-      setIsProcessing(false)
-      alert("Le traitement backend sera configuré à la prochaine étape !")
-    }, 2000)
+
+    setJob({ status: "pending", progress: 0, error: null, clips: [] })
+
+    try {
+      const res = await fetch(`${API_URL}/api/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          youtubeUrl: youtubeUrl.trim(),
+          clipDuration: DURATION_TO_SECONDS[clipDuration] || 30,
+          subtitleStyle: STYLE_TO_KEY[subtitleStyle] || "gras-blanc"
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "Lien YouTube invalide ou erreur serveur")
+      }
+
+      const data = await res.json()
+      startPolling(data.jobId)
+    } catch (err: any) {
+      setJob({ status: "error", progress: 0, error: err.message, clips: [] })
+    }
+  }
+
+  const handleReset = () => {
+    stopPolling()
+    setYoutubeUrl("")
+    setJob({ status: "idle", progress: 0, error: null, clips: [] })
   }
 
   return (
@@ -81,13 +179,15 @@ export default function AfroClipHome() {
               value={youtubeUrl}
               onChange={(e) => setYoutubeUrl(e.target.value)}
               placeholder="Colle le lien YouTube ici..."
-              className="w-full pl-11 pr-12 py-3.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition"
+              disabled={isProcessing}
+              className="w-full pl-11 pr-12 py-3.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 transition disabled:opacity-60"
             />
             <button
               onClick={() => {
                 navigator.clipboard.readText().then(text => setYoutubeUrl(text)).catch(() => {})
               }}
-              className="absolute inset-y-1.5 right-1.5 px-3 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
+              disabled={isProcessing}
+              className="absolute inset-y-1.5 right-1.5 px-3 flex items-center justify-center rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition disabled:opacity-60"
               title="Coller depuis le presse-papier"
             >
               <Copy className="h-4 w-4" />
@@ -110,7 +210,8 @@ export default function AfroClipHome() {
                   <button
                     key={item.id}
                     onClick={() => setClipDuration(item.id)}
-                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center ${
+                    disabled={isProcessing}
+                    className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center justify-center disabled:opacity-60 ${
                       clipDuration === item.id
                         ? "bg-purple-600/20 border-purple-500 text-white shadow-sm"
                         : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
@@ -138,7 +239,8 @@ export default function AfroClipHome() {
                   <button
                     key={item.id}
                     onClick={() => setSubtitleStyle(item.id)}
-                    className={`p-2 rounded-xl border text-left transition ${
+                    disabled={isProcessing}
+                    className={`p-2 rounded-xl border text-left transition disabled:opacity-60 ${
                       subtitleStyle === item.id
                         ? "bg-purple-600/20 border-purple-500 text-white"
                         : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700"
@@ -153,27 +255,77 @@ export default function AfroClipHome() {
           </div>
 
           {/* Action Button */}
-          <button
-            onClick={handleGenerate}
-            disabled={isProcessing || !youtubeUrl}
-            className={`w-full py-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition shadow-xl ${
-              isProcessing || !youtubeUrl
-                ? "bg-slate-800 text-slate-500 cursor-not-allowed"
-                : "bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-95 shadow-purple-950/50"
-            }`}
-          >
-            {isProcessing ? (
-              <>
-                <Zap className="h-5 w-5 animate-spin text-amber-300" />
-                <span>Analyse de la vidéo par l'IA...</span>
-              </>
-            ) : (
-              <>
-                <Wand2 className="h-5 w-5 text-amber-300" />
-                <span>Générer les Shorts IA</span>
-              </>
-            )}
-          </button>
+          {job.status !== "done" && (
+            <button
+              onClick={handleGenerate}
+              disabled={isProcessing || !youtubeUrl}
+              className={`w-full py-4 rounded-xl font-bold text-sm text-white flex items-center justify-center gap-2 transition shadow-xl ${
+                isProcessing || !youtubeUrl
+                  ? "bg-slate-800 text-slate-500 cursor-not-allowed"
+                  : "bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-95 shadow-purple-950/50"
+              }`}
+            >
+              {isProcessing ? (
+                <>
+                  <Zap className="h-5 w-5 animate-spin text-amber-300" />
+                  <span>{STATUS_LABELS[job.status]} {job.progress}%</span>
+                </>
+              ) : (
+                <>
+                  <Wand2 className="h-5 w-5 text-amber-300" />
+                  <span>Générer les Shorts IA</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Progress bar */}
+          {isProcessing && (
+            <div className="mt-3 w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-purple-500 via-pink-500 to-amber-400 transition-all duration-500"
+                style={{ width: `${job.progress}%` }}
+              />
+            </div>
+          )}
+
+          {/* Error */}
+          {job.status === "error" && (
+            <div className="mt-4 text-sm text-red-400 bg-red-950/40 border border-red-900/60 rounded-xl p-3 flex items-center justify-between">
+              <span>{job.error || "Erreur inconnue"}</span>
+              <button onClick={handleReset} className="underline text-red-300">
+                Réessayer
+              </button>
+            </div>
+          )}
+
+          {/* Résultats */}
+          {job.status === "done" && (
+            <div className="mt-2 text-left">
+              <p className="text-sm font-semibold text-white mb-3">
+                {job.clips.length} short{job.clips.length > 1 ? "s" : ""} prêt{job.clips.length > 1 ? "s" : ""} !
+              </p>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                {job.clips.map((clip, i) => (
+                  <div key={i} className="rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
+                    <video src={clip.url} controls className="w-full aspect-[9/16] object-cover bg-black" />
+                    <div className="p-2 flex items-center justify-between text-[11px] text-slate-400">
+                      <span>{clip.title}</span>
+                      <a href={clip.url} download className="text-purple-400 font-medium flex items-center gap-1">
+                        <Download className="h-3 w-3" /> DL
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={handleReset}
+                className="w-full py-3 rounded-xl border border-slate-700 text-slate-200 text-sm font-medium hover:bg-slate-800/50 transition"
+              >
+                Analyser une autre vidéo
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Feature Highlights */}
