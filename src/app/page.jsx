@@ -19,31 +19,15 @@ import {
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "https://afroclip-backend-production.up.railway.app"
 
 // Le backend attend des valeurs numériques / clés sans accents
-const DURATION_TO_SECONDS: Record<string, number> = { "15s": 15, "30s": 30, "60s": 60 }
-const STYLE_TO_KEY: Record<string, string> = {
+const DURATION_TO_SECONDS = { "15s": 15, "30s": 30, "60s": 60 }
+const STYLE_TO_KEY = {
   "Karaoké": "karaoke",
   "Néon": "neon",
   "Gras Blanc": "gras-blanc",
   "Pop Orange": "pop-orange"
 }
 
-type JobStatus = "idle" | "pending" | "downloading" | "analyzing" | "processing" | "uploading" | "done" | "error"
-
-interface Clip {
-  title: string
-  durationSec: number
-  subtitleStyle: string
-  url: string
-}
-
-interface JobState {
-  status: JobStatus
-  progress: number
-  error: string | null
-  clips: Clip[]
-}
-
-const STATUS_LABELS: Record<JobStatus, string> = {
+const STATUS_LABELS = {
   idle: "",
   pending: "Préparation...",
   downloading: "Récupération de la vidéo...",
@@ -58,8 +42,8 @@ export default function AfroClipHome() {
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [clipDuration, setClipDuration] = useState("30s")
   const [subtitleStyle, setSubtitleStyle] = useState("Karaoké")
-  const [job, setJob] = useState<JobState>({ status: "idle", progress: 0, error: null, clips: [] })
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [job, setJob] = useState({ status: "idle", progress: 0, error: null, clips: [] })
+  const pollRef = useRef(null)
 
   const isProcessing = ["pending", "downloading", "analyzing", "processing", "uploading"].includes(job.status)
 
@@ -74,18 +58,18 @@ export default function AfroClipHome() {
     return () => stopPolling()
   }, [])
 
-  const startPolling = (jobId: string) => {
+  const startPolling = (jobId) => {
     stopPolling()
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(`${API_URL}/api/analyze/${jobId}`)
         if (!res.ok) throw new Error("Job introuvable")
-        const data: JobState = await res.json()
+        const data = await res.json()
         setJob(data)
         if (data.status === "done" || data.status === "error") {
           stopPolling()
         }
-      } catch (err: any) {
+      } catch (err) {
         setJob((prev) => ({ ...prev, status: "error", error: err.message }))
         stopPolling()
       }
@@ -115,7 +99,7 @@ export default function AfroClipHome() {
 
       const data = await res.json()
       startPolling(data.jobId)
-    } catch (err: any) {
+    } catch (err) {
       setJob({ status: "error", progress: 0, error: err.message, clips: [] })
     }
   }
